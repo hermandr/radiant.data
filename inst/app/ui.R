@@ -1,3 +1,4 @@
+message("ui.R")
 ## ui for data menu in radiant
 navbar_proj(
   do.call(

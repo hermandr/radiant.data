@@ -16,6 +16,7 @@ output$ui_state_load <- renderUI({
   }
 })
 
+# Upload file UI given the acceptable file types
 make_uploadfile <- function(accept) {
   if (getOption("radiant.shinyFiles", FALSE)) {
     shinyFiles::shinyFilesButton("uploadfile", "Load", "Load data", multiple = TRUE, icon = icon("upload"))
@@ -24,6 +25,7 @@ make_uploadfile <- function(accept) {
   }
 }
 
+# Upload file with various formats
 output$ui_fileUpload <- renderUI({
   req(input$dataType)
   if (input$dataType == "csv") {
@@ -35,8 +37,10 @@ output$ui_fileUpload <- renderUI({
     )
   } else if (input$dataType %in% c("rda", "rds")) {
     make_uploadfile(accept = c(".rda", ".rds", ".rdata"))
+
   } else if (input$dataType == "feather") {
     make_uploadfile(accept = ".feather")
+
   } else if (input$dataType == "url_rds") {
     with(tags, table(
       tr(
@@ -84,6 +88,9 @@ output$ui_clipboard_save <- renderUI({
   }
 })
 
+
+# Load dataset from Global environment
+
 output$ui_from_global <- renderUI({
   req(input$dataType)
   df_list <- sapply(mget(ls(envir = .GlobalEnv), envir = .GlobalEnv), is.data.frame) %>%
@@ -98,14 +105,6 @@ output$ui_from_global <- renderUI({
     radioButtons("from_global_move", NULL, c("copy" = "copy", "move" = "move"), selected = "copy", inline = TRUE),
     br(),
     actionButton("from_global_load", "Load", icon = icon("upload"))
-  )
-})
-
-output$ui_to_global <- renderUI({
-  tagList(
-    radioButtons("to_global_move", NULL, c("copy" = "copy", "move" = "move"), selected = "copy", inline = TRUE),
-    br(),
-    actionButton("to_global_save", "Save", icon = icon("download"))
   )
 })
 
@@ -134,6 +133,16 @@ observeEvent(input$from_global_load, {
   )
 })
 
+# Copy or Move dataset into global environment
+
+output$ui_to_global <- renderUI({
+  tagList(
+    radioButtons("to_global_move", NULL, c("copy" = "copy", "move" = "move"), selected = "copy", inline = TRUE),
+    br(),
+    actionButton("to_global_save", "Save", icon = icon("download"))
+  )
+})
+
 observeEvent(input$to_global_save, {
   df <- input$dataset
   req(df)
@@ -155,26 +164,92 @@ observeEvent(input$to_global_save, {
   )
 })
 
+
+# Load file from azure ML Dataset
+output$ui_azml_dataset <- renderUI({
+  req(input$dataType)
+  message("Load dataset catalog from azure ml dataset")
+
+  this_ws <- login_get_ws()
+  dataset_names <- get_dataset_catalog(this_ws) %>% pull(name)
+
+  message("azml dataset:",paste(dataset_names, collapse = ","))
+
+  tagList(
+    selectInput(
+      "from_azml", label = "Datasets in Azure ML:",
+      dataset_names, selected = dataset_names[1], multiple = TRUE, selectize = FALSE,
+      size = min(5, length(dataset_names))
+    ),
+    br(),
+    actionButton("from_azml_load", "Load", icon = icon("upload"))
+  )
+})
+
+observeEvent(input$from_azml_load, {
+  dfs <- input$from_azml
+  req(dfs)
+
+  this_ws <- login_get_ws()
+
+  for (df in dfs) {
+    message("Load dataset '",paste(df,collapse=","),"' from azure ml dataset")
+    ds <- load_dataset_into_data_frame(get_dataset_by_name(this_ws, df, version = "latest"))
+
+    r_data[[df]] <- ds
+    r_info[[paste0(df, "_lcmd")]] <- glue('{df} <- load_dataset_into_data_frame(get_dataset_by_name(login_get_ws(), {df}, version = "latest"))')
+    r_info[[paste0(df, "_descr")]] <- get_dataset_catalog(this_ws) %>% filter(name==df) %>% pull(description) %>%
+      {if (is.null(.) | stringr::str_length(.) == 0) "No description provided. Please use Radiant to add an overview of the data in markdown format.\nCheck the 'Add/edit data description' box on the top-left of your screen" else .} %>%
+      fix_smart()
+    r_info[["datasetlist"]] %<>% c(df, .) %>% unique()
+  }
+
+  updateSelectInput(
+    session, "dataset", label = "Datasets:",
+    choices = r_info[["datasetlist"]],
+    selected = r_info[["datasetlist"]][1]
+  )
+})
+
+# MAIN UI
 output$ui_Manage <- renderUI({
   data_types_in <- c(
-    "rds | rda | rdata" = "rds", "csv" = "csv",
-    "clipboard" = "clipboard", "examples" = "examples",
-    "rds (url)" = "url_rds", "csv (url)" = "url_csv",
-    "feather" = "feather", "from global workspace" = "from_global",
-    "radiant state file" = "state"
+    "rds | rda | rdata" = "rds",
+    "csv" = "csv",
+    "clipboard" = "clipboard",
+    "examples" = "examples",
+    "rds (url)" = "url_rds",
+    "csv (url)" = "url_csv",
+    "feather" = "feather",
+    "from global workspace" = "from_global",
+    "radiant state file" = "state",
+    "Azure ML dataset" = "azml_dataset"
   )
   data_types_out <- c(
-    "rds" = "rds", "rda" = "rda", "csv" = "csv",
-    "clipboard" = "clipboard", "feather" = "feather",
-    "to global workspace" = "to_global", "radiant state file" = "state"
+    "rds" = "rds",
+    "rda" = "rda",
+    "csv" = "csv",
+    "clipboard" = "clipboard",
+    "feather" = "feather",
+    "to global workspace" = "to_global",
+    "radiant state file" = "state"
   )
+
+  # Exclude Global environment as data in and out if in cloud
   if (!isTRUE(getOption("radiant.local"))) {
     data_types_in <- data_types_in[-which(data_types_in == "from_global")]
     data_types_out <- data_types_out[-which(data_types_out == "to_global")]
   }
+
+  # Exclude feather data in and out if feather package is not in namespace
   if (!("feather" %in% rownames(utils::installed.packages()))) {
     data_types_in <- data_types_in[-which(data_types_in == "feather")]
     data_types_out <- data_types_out[-which(data_types_out == "feather")]
+  }
+
+  # Exclude azure ML dataset input if azuremlsdk package is not in namespace
+  if (!("azuremlsdk" %in% rownames(utils::installed.packages()))) {
+    data_types_in <- data_types_in[-which(data_types_in == "azml_dataset")]
   }
 
   tagList(
@@ -219,6 +294,11 @@ output$ui_Manage <- renderUI({
         uiOutput("ui_state_load"),
         uiOutput("ui_state_upload"),
         uiOutput("refreshOnLoad")
+      ),
+      # Azure ML Dataset
+      conditionalPanel(
+        condition = "input.dataType == 'azml_dataset'",
+        uiOutput("ui_azml_dataset")
       )
     ),
     wellPanel(
@@ -383,6 +463,7 @@ man_save_data <- function(file) {
   })
 }
 
+# State stuff
 if (getOption("radiant.shinyFiles", FALSE)) {
   sf_filetypes <- function() {
     if (length(input$dataType) == 0) {
@@ -420,7 +501,9 @@ if (getOption("radiant.shinyFiles", FALSE)) {
 }
 
 state_name_dlh <- function() state_name(full.name = FALSE)
+#
 
+# Download
 download_handler(
   id = "state_save",
   label = "Save",

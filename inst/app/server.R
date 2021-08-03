@@ -1,3 +1,5 @@
+message("server.R")
+
 shinyServer(function(input, output, session) {
 
   enc <- getOption("radiant.encoding", "UTF-8")

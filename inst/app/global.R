@@ -1,3 +1,5 @@
+message("global.R")
+
 ## based on https://github.com/rstudio/shiny/issues/1237
 suppressWarnings(
   try(
@@ -173,12 +175,16 @@ if (!"package:radiant.data" %in% search() &&
     # isTRUE(Sys.getenv("SHINY_PORT") == "") &&
     isTRUE(getOption("radiant.development")) &&
     getOption("radiant.path.data") == "..") {
-  import_fs("radiant.data", libs = c("magrittr", "ggplot2", "lubridate", "tidyr", "dplyr", "broom", "tibble", "glue"))
+  import_fs("radiant.data", libs = c("magrittr", "ggplot2", "lubridate", "tidyr", "dplyr", "broom", "tibble", "glue", "azuremlsdk"))
   options(radiant.from.package = FALSE)
 } else {
   options(radiant.from.package = TRUE)
   library(radiant.data)
 }
+
+
+
+
 
 ## basic options when run on server
 if (getOption("width") != 250) {
@@ -500,12 +506,12 @@ options(
       inverse = TRUE,
       collapsible = TRUE,
       position = "fixed-top",
-      tabPanel("Data", withMathJax(), uiOutput("ui_data"))
+      tabPanel("Data", withMathJax(), uiOutput("ui_data")) # main panel
     )
 )
 
 options(
-  radiant.shared_ui =
+  radiant.shared_ui =  # hamburger
     tagList(
       navbarMenu("Report",
         tabPanel("Rmd",

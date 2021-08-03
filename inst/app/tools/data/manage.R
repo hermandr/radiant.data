@@ -106,12 +106,14 @@ load_user_data <- function(
   ## can't have spaces, dashes, etc. in objectname
   objname <- radiant.data::fix_names(objname)
 
+  # Handle rda rdata
   if (ext %in% c("rda", "rdata")) {
     ## objname will hold the name of the object(s) inside the R datafile
     robjname <- try(load(uFile), silent = TRUE)
     if (inherits(robjname, "try-error")) {
       upload_error_handler(objname, "#### There was an error loading the data. Please make sure the data are in rda format.")
     } else if (length(robjname) > 1) {
+      # If rda object contains more than 1 object and is either r_state, r_info, r_data then it is a state file
       if (sum(robjname %in% c("r_state", "r_data", "r_info")) > 1) {
         upload_error_handler(objname, "#### To restore state select 'radiant state file' from the 'Load data of type' drowdown before loading the file")
         ## need to remove the local copies of r_state, r_data, and r_info
@@ -123,6 +125,8 @@ load_user_data <- function(
       r_data[[objname]] <- as.data.frame(get(robjname), stringsAsFactors = FALSE)
       cmd <- glue('{objname} <- load({pp$rpath}) %>% get()')
     }
+
+  # Handle rds
   } else if (ext == "rds") {
     ## objname will hold the name of the object(s) inside the R datafile
     robj <- try(readRDS(uFile), silent = TRUE)
@@ -132,6 +136,8 @@ load_user_data <- function(
       r_data[[objname]] <- as.data.frame(robj, stringsAsFactors = FALSE)
       cmd <- glue('{objname} <- readr::read_rds({pp$rpath})')
     }
+
+  # Handle feather
   } else if (ext == "feather") {
     if (!"feather" %in% rownames(utils::installed.packages())) {
       upload_error_handler(objname, "#### The feather package is not installed. Please use install.packages('feather')")
@@ -146,6 +152,8 @@ load_user_data <- function(
         cmd <- glue('{objname} <- feather::read_feather({pp$rpath}, columns = c())')
       }
     }
+
+  # Handle tsv, csv, txt
   } else if (ext %in% c("tsv", "csv", "txt")) {
     r_data[[objname]] <- load_csv(
         uFile, delim = sep, col_names = header, n_max = n_max,
@@ -166,6 +174,8 @@ load_user_data <- function(
     ## make sure all columns names are "fixed"
     cmd <- paste0(cmd, " %>%\n  fix_names()")
     if (man_str_as_factor) cmd <- paste0(cmd, " %>%\n  to_fct()")
+
+  # Handle others
   } else if (ext != "---") {
     ret <- glue('#### The selected filetype is not currently supported ({fext})')
     upload_error_handler(objname, ret)
@@ -176,6 +186,7 @@ load_user_data <- function(
   }
 
   r_info[[glue('{objname}_descr')]] <- attr(r_data[[objname]], "description")
+
   if (!is_empty(cmd)) {
     cn <- colnames(r_data[[objname]])
     fn <- radiant.data::fix_names(cn)
@@ -187,4 +198,46 @@ load_user_data <- function(
   }
   r_info[[glue('{objname}_lcmd')]] <- cmd
   r_info[["datasetlist"]] <- c(objname, r_info[["datasetlist"]]) %>% unique()
+
+  # These Radiant environment variables must be filled when datasets are loaded
+  # r_data[["objname"]]      contains the dataframe
+  # r_info[["objname_lcmd"]] cmd to reload the dataset
+  # r_info[["objname_desc"]] description of the dataset
+  # r_info[["datasetlist]]   List of datasets
 }
+
+
+# functions to deal with AZ ML Dataset
+
+login_get_ws <- function(){
+
+  library(azuremlsdk)
+
+  this_ws <- load_workspace_from_config("kns_config.json")
+
+
+
+  return(this_ws)
+}
+
+
+get_dataset_catalog <- function(workspace) {
+
+  library(dplyr)
+
+  ds_list <- azureml$core$dataset$Dataset$get_all(workspace)
+
+  dplyr::tibble(ds_reg = ds_list$registrations) %>%
+    dplyr::mutate(
+      description = purrr::map_chr(ds_reg,function(DF){ if(is.null(DF$description)) "" else DF$description}),
+      name = purrr::map_chr(ds_reg,"name"),
+      registered_id = purrr::map_chr(ds_reg,"registered_id"),
+      saved_id = purrr::map_chr(ds_reg,"saved_id"),
+      tags = purrr::map(ds_reg,"tags"),
+      version = purrr::map_chr(ds_reg,"version"),
+      workspace_obj = purrr::map(ds_reg,"workspace"),
+      ws_type = purrr::map_chr(workspace_obj,~paste(class(.x),collapse="|"))
+    ) %>% tidyr::unnest(tags) %>% tidyr::unnest(tags)
+
+}
+

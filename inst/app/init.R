@@ -1,3 +1,4 @@
+message("init.R")
 ################################################################################
 ## functions to set initial values and take information from r_state
 ## when available
@@ -318,7 +319,7 @@ isolate({
 if (getOption("radiant.from.package", default = TRUE)) {
   ## launch using installed radiant.data package
   # radiant.data::copy_all("radiant.data")
-  # cat("\nGetting radiant.data from package ...\n")
+  cat("\nGetting radiant.data from package ...\n")
 } else {
   ## for shiny-server and development
   for (file in list.files("../../R", pattern = "\\.(r|R)$", full.names = TRUE)) {
