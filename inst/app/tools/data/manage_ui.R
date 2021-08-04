@@ -176,27 +176,32 @@ output$ui_azml_dataset <- renderUI({
   message("azml dataset:",paste(dataset_names, collapse = ","))
 
   tagList(
-    selectInput(
+    selectInput( # Drop down list of dataset catalog
       "from_azml", label = "Datasets in Azure ML:",
       dataset_names, selected = dataset_names[1], multiple = TRUE, selectize = FALSE,
       size = min(5, length(dataset_names))
     ),
     br(),
+    # Load button 
     actionButton("from_azml_load", "Load", icon = icon("upload"))
   )
 })
 
-observeEvent(input$from_azml_load, {
+observeEvent(input$from_azml_load, { # Upon button load click
   dfs <- input$from_azml
   req(dfs)
 
   this_ws <- login_get_ws()
 
+  # For each dataset in list of dataset selected
   for (df in dfs) {
     message("Load dataset '",paste(df,collapse=","),"' from azure ml dataset")
     ds <- load_dataset_into_data_frame(get_dataset_by_name(this_ws, df, version = "latest"))
 
+    # Load dataset
     r_data[[df]] <- ds
+    
+    # Register the dataset in radiant environment
     r_info[[paste0(df, "_lcmd")]] <- glue('{df} <- load_dataset_into_data_frame(get_dataset_by_name(login_get_ws(), {df}, version = "latest"))')
     r_info[[paste0(df, "_descr")]] <- get_dataset_catalog(this_ws) %>% filter(name==df) %>% pull(description) %>%
       {if (is.null(.) | stringr::str_length(.) == 0) "No description provided. Please use Radiant to add an overview of the data in markdown format.\nCheck the 'Add/edit data description' box on the top-left of your screen" else .} %>%
@@ -204,6 +209,7 @@ observeEvent(input$from_azml_load, {
     r_info[["datasetlist"]] %<>% c(df, .) %>% unique()
   }
 
+  # Set the dataset selected to be the latest dataset loaded
   updateSelectInput(
     session, "dataset", label = "Datasets:",
     choices = r_info[["datasetlist"]],
