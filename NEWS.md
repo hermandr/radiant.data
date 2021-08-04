@@ -1,3 +1,6 @@
+# radiant.data 1.3.12/azureml
+* added functionality to load a dataset from Azure ML dataset respository
+* 
 # radiant.data 1.3.12
 
 * Fixes related to breaking changes `magrittr`
